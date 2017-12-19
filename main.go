@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -53,7 +54,7 @@ func writePrefix(w io.Writer, length uint64) error {
 func nodeVersion(addr string) (string, error) {
 	// Create dialer
 	dialer := &net.Dialer{
-		Timeout: 100 * time.Millisecond,
+		Timeout: time.Minute,
 	}
 
 	// Connect to host
@@ -79,14 +80,12 @@ func nodeVersion(addr string) (string, error) {
 	}
 
 	// Receive peer version prefix
-	conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 	prefix, err := readPrefix(conn)
 	if err != nil {
 		return "", err
 	}
 
 	// Receive peer version
-	conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 	version := make([]byte, prefix)
 	_, err = conn.Read(version)
 	if err != nil {
@@ -161,10 +160,16 @@ func main() {
 		entryMap = intersect(entryMap, loadNodes(path))
 	}
 
+	var wg sync.WaitGroup
 	for address := range entryMap {
-		version, err := nodeVersion(address)
-		if err == nil {
-			fmt.Printf("%v -> %v\n", address, version)
-		}
+		wg.Add(1)
+		go func(a string) {
+			version, err := nodeVersion(a)
+			if err == nil {
+				fmt.Printf("%v -> %v\n", a, version)
+			}
+			wg.Done()
+		}(address)
 	}
+	wg.Wait()
 }
